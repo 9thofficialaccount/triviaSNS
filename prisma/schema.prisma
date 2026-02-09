@@ -1,0 +1,252 @@
+// Prisma Schema for Trivia SNS
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ユーザーモデル
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  username      String    @unique
+  displayName   String
+  password      String    // ハッシュ化されたパスワード
+  bio           String?
+  avatar        String?
+  isAdmin       Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  posts         Post[]
+  comments      Comment[]
+  likes         Like[]
+  reports       Report[]
+  communityNotes CommunityNote[]
+  userTags      UserTag[]
+
+  @@index([username])
+  @@index([email])
+}
+
+// 投稿モデル（3層構造）
+model Post {
+  id            String    @id @default(cuid())
+  authorId      String
+  author        User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  // 第1層：前段（人間味のある導入）
+  preface       String    // 130字以内
+
+  // 第2層：トリビア本文
+  content       String    // 130字以内
+
+  // 第3層：引用元
+  sources       Source[]
+
+  // メタデータ
+  viewCount     Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // リレーション
+  comments      Comment[]
+  likes         Like[]
+  tags          PostTag[]
+  reports       Report[]
+  communityNotes CommunityNote[]
+  screenshot    Screenshot?
+
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+// 引用元モデル
+model Source {
+  id            String    @id @default(cuid())
+  postId        String
+  post          Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  type          SourceType // URL, BOOK, PAPER, etc.
+  title         String?
+  url           String?
+  author        String?
+  publishDate   String?
+  notes         String?
+
+  createdAt     DateTime  @default(now())
+
+  @@index([postId])
+}
+
+enum SourceType {
+  URL
+  BOOK
+  PAPER
+  ARTICLE
+  OTHER
+}
+
+// コメント（返信）モデル
+model Comment {
+  id            String    @id @default(cuid())
+  postId        String
+  post          Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId      String
+  author        User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  content       String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([postId])
+  @@index([authorId])
+}
+
+// いいねモデル
+model Like {
+  id            String    @id @default(cuid())
+  postId        String
+  post          Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime  @default(now())
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
+}
+
+// タグモデル
+model Tag {
+  id            String    @id @default(cuid())
+  name          String    @unique
+  description   String?
+  createdAt     DateTime  @default(now())
+
+  posts         PostTag[]
+  userTags      UserTag[]
+
+  @@index([name])
+}
+
+// 投稿とタグの中間テーブル
+model PostTag {
+  id            String    @id @default(cuid())
+  postId        String
+  post          Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tagId         String
+  tag           Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  addedBy       TagAddedBy // AI or USER
+  createdAt     DateTime  @default(now())
+
+  @@unique([postId, tagId])
+  @@index([postId])
+  @@index([tagId])
+}
+
+// ユーザーとタグの関係（興味のあるタグ）
+model UserTag {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tagId         String
+  tag           Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime  @default(now())
+
+  @@unique([userId, tagId])
+  @@index([userId])
+  @@index([tagId])
+}
+
+enum TagAddedBy {
+  AI
+  USER
+}
+
+// 通報モデル
+model Report {
+  id            String    @id @default(cuid())
+  postId        String
+  post          Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reporterId    String
+  reporter      User      @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  reason        ReportReason
+  description   String?
+  status        ReportStatus @default(PENDING)
+  
+  // 管理者による審査結果
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  reviewNote    String?
+
+  createdAt     DateTime  @default(now())
+
+  @@index([postId])
+  @@index([reporterId])
+  @@index([status])
+}
+
+enum ReportReason {
+  FALSE_INFORMATION
+  MISSING_SOURCE
+  INAPPROPRIATE_CONTENT
+  SPAM
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+// コミュニティノートモデル
+model CommunityNote {
+  id            String    @id @default(cuid())
+  postId        String
+  post          Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId      String
+  author        User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  content       String
+  sources       String?   // 追加の引用元
+  
+  helpfulCount  Int       @default(0)
+  notHelpfulCount Int     @default(0)
+
+  status        NoteStatus @default(PENDING)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([postId])
+  @@index([authorId])
+  @@index([status])
+}
+
+enum NoteStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// スクリーンショット（画像魚拓）モデル
+model Screenshot {
+  id            String    @id @default(cuid())
+  postId        String    @unique
+  post          Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  imageUrl      String
+  createdAt     DateTime  @default(now())
+
+  @@index([postId])
+}

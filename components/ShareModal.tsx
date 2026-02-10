@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Copy, Twitter, Facebook, Link as LinkIcon, Camera } from 'lucide-react'
 
 interface ShareModalProps {
@@ -13,8 +13,13 @@ interface ShareModalProps {
 export function ShareModal({ isOpen, onClose, postId, postContent }: ShareModalProps) {
   const [copied, setCopied] = useState(false)
   const [isCapturing, setIsCapturing] = useState(false)
+  const [shareUrl, setShareUrl] = useState('')
 
-  const shareUrl = `${window.location.origin}/posts/${postId}`
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setShareUrl(`${window.location.origin}/posts/${postId}`)
+    }
+  }, [postId])
 
   const handleCopyLink = async () => {
     try {

@@ -4,6 +4,8 @@ import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/prisma'
 import { suggestTags } from '@/lib/ai-tags'
 
+export const dynamic = 'force-dynamic'
+
 // 投稿一覧を取得
 export async function GET(request: NextRequest) {
   try {

@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Header } from '@/components/Header'
 import { TriviaPost } from '@/components/TriviaPost'
 import { Search, Hash, User } from 'lucide-react'
 
-export default function SearchPage() {
+function SearchContent() {
   const searchParams = useSearchParams()
   const query = searchParams.get('q') || ''
   const [results, setResults] = useState<any>({ posts: [], tags: [], users: [] })
@@ -174,5 +174,23 @@ export default function SearchPage() {
         )}
       </main>
     </div>
+  )
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen">
+        <Header />
+        <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mx-auto"></div>
+            <p className="mt-4 text-gray-600">読み込み中...</p>
+          </div>
+        </main>
+      </div>
+    }>
+      <SearchContent />
+    </Suspense>
   )
 }

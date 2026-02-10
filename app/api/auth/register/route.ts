@@ -1,9 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { hash } from 'bcryptjs'
+import { 
+  isValidEmail, 
+  isValidUsername, 
+  isStrongPassword, 
+  checkRateLimit, 
+  getClientIp,
+  sanitizeText,
+  containsSQLInjection
+} from '@/lib/security'
 
 export async function POST(request: NextRequest) {
   try {
+    // レート制限チェック
+    const clientIp = getClientIp(request)
+    const rateLimit = checkRateLimit(`register:${clientIp}`, 5, 300000) // 5回/5分
+    
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'リクエストが多すぎます。しばらくしてから再度お試しください。' },
+        { status: 429 }
+      )
+    }
+
     const body = await request.json()
     const { email, username, displayName, password } = body
 
@@ -15,9 +35,35 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (password.length < 8) {
+    // メールアドレスのバリデーション
+    if (!isValidEmail(email)) {
       return NextResponse.json(
-        { error: 'パスワードは8文字以上にしてください' },
+        { error: '有効なメールアドレスを入力してください' },
+        { status: 400 }
+      )
+    }
+
+    // ユーザー名のバリデーション
+    if (!isValidUsername(username)) {
+      return NextResponse.json(
+        { error: 'ユーザー名は3-20文字の英数字とアンダースコアのみ使用できます' },
+        { status: 400 }
+      )
+    }
+
+    // SQLインジェクション対策
+    if (containsSQLInjection(username) || containsSQLInjection(displayName)) {
+      return NextResponse.json(
+        { error: '無効な文字が含まれています' },
+        { status: 400 }
+      )
+    }
+
+    // パスワードの強度チェック
+    const passwordCheck = isStrongPassword(password)
+    if (!passwordCheck.isValid) {
+      return NextResponse.json(
+        { error: passwordCheck.errors.join(', ') },
         { status: 400 }
       )
     }
@@ -50,12 +96,12 @@ export async function POST(request: NextRequest) {
     // パスワードをハッシュ化
     const hashedPassword = await hash(password, 12)
 
-    // ユーザーを作成
+    // ユーザーを作成（表示名をサニタイズ）
     const user = await prisma.user.create({
       data: {
-        email,
-        username,
-        displayName,
+        email: email.toLowerCase().trim(),
+        username: username.trim(),
+        displayName: sanitizeText(displayName.trim()),
         password: hashedPassword,
       },
       select: {

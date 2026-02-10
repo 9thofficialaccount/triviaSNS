@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Shield, AlertTriangle, FileText, CheckCircle, XCircle } from 'lucide-react'
+import { Shield, AlertTriangle, FileText, CheckCircle, XCircle, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 
 interface Report {
   id: string
@@ -53,7 +54,6 @@ export default function AdminDashboard() {
           reportId,
           status: newStatus,
           reviewNote: note,
-          reviewerId: 'admin-user-id', // TODO: 実際の管理者IDを使用
         }),
       })
       fetchReports()
@@ -62,14 +62,69 @@ export default function AdminDashboard() {
     }
   }
 
+  const handleDeletePost = async (postId: string) => {
+    if (!confirm('この投稿を完全に削除しますか？この操作は取り消せません。')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/admin/posts/${postId}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        alert('投稿を削除しました')
+        fetchReports()
+      } else {
+        alert('投稿の削除に失敗しました')
+      }
+    } catch (error) {
+      console.error('Failed to delete post:', error)
+      alert('投稿の削除に失敗しました')
+    }
+  }
+
+  const handleFlagPost = async (postId: string) => {
+    const reason = prompt('ファクトチェック結果を入力してください：')
+    if (!reason) return
+
+    try {
+      const response = await fetch(`/api/admin/posts/${postId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'flag',
+          reason,
+        }),
+      })
+
+      if (response.ok) {
+        alert('コミュニティノートを追加しました')
+        fetchReports()
+      } else {
+        alert('処理に失敗しました')
+      }
+    } catch (error) {
+      console.error('Failed to flag post:', error)
+      alert('処理に失敗しました')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ヘッダー */}
       <header className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center space-x-3">
-            <Shield className="w-8 h-8 text-red-600" />
-            <h1 className="text-2xl font-bold text-gray-900">管理者ダッシュボード</h1>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Shield className="w-8 h-8 text-red-600" />
+              <h1 className="text-2xl font-bold text-gray-900">管理者ダッシュボード</h1>
+            </div>
+            <Link href="/" className="text-primary-600 hover:text-primary-700 font-medium">
+              ← ホームに戻る
+            </Link>
           </div>
         </div>
       </header>
@@ -154,7 +209,7 @@ export default function AdminDashboard() {
                   </div>
 
                   {/* アクション */}
-                  <div className="flex space-x-3">
+                  <div className="flex flex-wrap gap-3">
                     <button
                       onClick={() => handleReview(report.id, 'RESOLVED', '通報内容を確認し、適切な対応を行いました。')}
                       className="flex items-center space-x-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
@@ -164,10 +219,24 @@ export default function AdminDashboard() {
                     </button>
                     <button
                       onClick={() => handleReview(report.id, 'REJECTED', '通報内容を確認しましたが、問題ないと判断しました。')}
-                      className="flex items-center space-x-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors"
+                      className="flex items-center space-x-2 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
                     >
                       <XCircle className="w-4 h-4" />
                       <span>却下</span>
+                    </button>
+                    <button
+                      onClick={() => handleFlagPost(report.post.id)}
+                      className="flex items-center space-x-2 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium transition-colors"
+                    >
+                      <FileText className="w-4 h-4" />
+                      <span>ファクトチェック</span>
+                    </button>
+                    <button
+                      onClick={() => handleDeletePost(report.post.id)}
+                      className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+                    >
+                      <AlertTriangle className="w-4 h-4" />
+                      <span>投稿を削除</span>
                     </button>
                   </div>
                 </div>

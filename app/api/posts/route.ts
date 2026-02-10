@@ -3,6 +3,13 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/prisma'
 import { suggestTags } from '@/lib/ai-tags'
+import { 
+  isWithinCharLimit, 
+  isValidUrl, 
+  sanitizeText, 
+  checkRateLimit, 
+  getClientIp 
+} from '@/lib/security'
 
 export const dynamic = 'force-dynamic'
 
@@ -89,47 +96,68 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // レート制限チェック（1分間に3投稿まで）
+    const clientIp = getClientIp(request)
+    const rateLimit = checkRateLimit(`post:${session.user.id}:${clientIp}`, 3, 60000)
+    
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: '投稿が多すぎます。しばらくしてから再度お試しください。' },
+        { status: 429 }
+      )
+    }
+
     const body = await request.json()
     const { preface, content, sources } = body
     const authorId = session.user.id
 
     // バリデーション
-    if (!preface || preface.length > 130) {
+    if (!preface || !isWithinCharLimit(preface, 130)) {
       return NextResponse.json(
-        { error: 'Preface must be 1-130 characters' },
+        { error: '前段は1-130文字で入力してください' },
         { status: 400 }
       )
     }
 
-    if (!content || content.length > 130) {
+    if (!content || !isWithinCharLimit(content, 130)) {
       return NextResponse.json(
-        { error: 'Content must be 1-130 characters' },
+        { error: 'トリビアは1-130文字で入力してください' },
         { status: 400 }
       )
     }
 
     if (!sources || sources.length === 0) {
       return NextResponse.json(
-        { error: 'At least one source is required' },
+        { error: '引用元を最低1つ追加してください' },
         { status: 400 }
       )
+    }
+
+    // 引用元のURL検証
+    for (const source of sources) {
+      if (source.url && !isValidUrl(source.url)) {
+        return NextResponse.json(
+          { error: '無効なURLが含まれています' },
+          { status: 400 }
+        )
+      }
     }
 
     // AIによるタグ提案
     const suggestedTags = await suggestTags(preface, content)
 
-    // 投稿を作成
+    // 投稿を作成（サニタイズ）
     const post = await prisma.post.create({
       data: {
-        preface,
-        content,
+        preface: sanitizeText(preface.trim()),
+        content: sanitizeText(content.trim()),
         authorId,
         sources: {
           create: sources.map((s: any) => ({
             type: s.type,
-            title: s.title,
-            url: s.url,
-            author: s.author,
+            title: s.title ? sanitizeText(s.title.trim()) : null,
+            url: s.url ? s.url.trim() : null,
+            author: s.author ? sanitizeText(s.author.trim()) : null,
           })),
         },
       },
